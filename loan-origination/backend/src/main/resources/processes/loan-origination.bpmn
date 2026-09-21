@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_LoanOrigination"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="EximeeBPMS Modeler"
+                  exporterVersion="1.3.0">
+  <bpmn:process id="loanOriginationProcess" name="Loan Origination Process" isExecutable="true" camunda:historyTimeToLive="P30D">
+    
+    <!-- Start Event -->
+    <bpmn:startEvent id="StartEvent_LoanSubmitted" name="Loan Application Submitted">
+      <bpmn:outgoing>Flow_StartToAutomatedCheck</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <!-- Automated Eligibility Check Service Task -->
+    <bpmn:serviceTask id="Task_AutomatedCheck" name="Automated Risk &amp; DTI Evaluation"
+                      camunda:delegateExpression="${automatedEligibilityCheckDelegate}">
+      <bpmn:incoming>Flow_StartToAutomatedCheck</bpmn:incoming>
+      <bpmn:outgoing>Flow_CheckToEligibilityGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Exclusive Gateway: Eligibility Criteria -->
+    <bpmn:exclusiveGateway id="Gateway_Eligibility" name="Passed Preliminary Criteria?">
+      <bpmn:incoming>Flow_CheckToEligibilityGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_EligibilityPassed</bpmn:outgoing>
+      <bpmn:outgoing>Flow_AutoReject</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- Auto Reject End Event -->
+    <bpmn:endEvent id="EndEvent_AutoRejected" name="Application Auto-Rejected (High DTI)">
+      <bpmn:incoming>Flow_AutoReject</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Underwriter Review User Task -->
+    <bpmn:userTask id="Task_UnderwriterReview" name="Underwriter Review &amp; Assessment"
+                   camunda:candidateGroups="underwriters">
+      <bpmn:incoming>Flow_EligibilityPassed</bpmn:incoming>
+      <bpmn:incoming>Flow_ApplicantResubmitted</bpmn:incoming>
+      <bpmn:outgoing>Flow_ReviewToDecisionGateway</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <!-- Exclusive Gateway: Underwriter Decision -->
+    <bpmn:exclusiveGateway id="Gateway_Decision" name="Underwriter Decision">
+      <bpmn:incoming>Flow_ReviewToDecisionGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_DecisionApproved</bpmn:outgoing>
+      <bpmn:outgoing>Flow_DecisionRejected</bpmn:outgoing>
+      <bpmn:outgoing>Flow_DecisionRequestInfo</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- Applicant Revision Task -->
+    <bpmn:userTask id="Task_ApplicantRevise" name="Applicant Revise Information"
+                   camunda:assignee="${applicantUsername}">
+      <bpmn:incoming>Flow_DecisionRequestInfo</bpmn:incoming>
+      <bpmn:outgoing>Flow_ApplicantResubmitted</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <!-- Approved End Event -->
+    <bpmn:endEvent id="EndEvent_Approved" name="Loan Approved &amp; Offer Issued">
+      <bpmn:incoming>Flow_DecisionApproved</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Rejected End Event -->
+    <bpmn:endEvent id="EndEvent_Rejected" name="Loan Rejected">
+      <bpmn:incoming>Flow_DecisionRejected</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Sequence Flows -->
+    <bpmn:sequenceFlow id="Flow_StartToAutomatedCheck" sourceRef="StartEvent_LoanSubmitted" targetRef="Task_AutomatedCheck" />
+    <bpmn:sequenceFlow id="Flow_CheckToEligibilityGateway" sourceRef="Task_AutomatedCheck" targetRef="Gateway_Eligibility" />
+    
+    <bpmn:sequenceFlow id="Flow_EligibilityPassed" name="Criteria Met" sourceRef="Gateway_Eligibility" targetRef="Task_UnderwriterReview">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${autoApproved == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <bpmn:sequenceFlow id="Flow_AutoReject" name="Risk Exceeded" sourceRef="Gateway_Eligibility" targetRef="EndEvent_AutoRejected">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${autoApproved == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_ReviewToDecisionGateway" sourceRef="Task_UnderwriterReview" targetRef="Gateway_Decision" />
+    
+    <bpmn:sequenceFlow id="Flow_DecisionApproved" name="Approve" sourceRef="Gateway_Decision" targetRef="EndEvent_Approved">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${decision == 'APPROVE'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <bpmn:sequenceFlow id="Flow_DecisionRejected" name="Reject" sourceRef="Gateway_Decision" targetRef="EndEvent_Rejected">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${decision == 'REJECT'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <bpmn:sequenceFlow id="Flow_DecisionRequestInfo" name="Request Info" sourceRef="Gateway_Decision" targetRef="Task_ApplicantRevise">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${decision == 'REQUEST_INFO'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_ApplicantResubmitted" name="Resubmit" sourceRef="Task_ApplicantRevise" targetRef="Task_UnderwriterReview" />
+
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_LoanOrigination">
+    <bpmndi:BPMNPlane id="BPMNPlane_LoanOrigination" bpmnElement="loanOriginationProcess">
+      <bpmndi:BPMNShape id="StartEvent_LoanSubmitted_di" bpmnElement="StartEvent_LoanSubmitted">
+        <dc:Bounds x="162" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AutomatedCheck_di" bpmnElement="Task_AutomatedCheck">
+        <dc:Bounds x="260" y="140" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Eligibility_di" bpmnElement="Gateway_Eligibility" isMarkerVisible="true">
+        <dc:Bounds x="445" y="155" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_AutoRejected_di" bpmnElement="EndEvent_AutoRejected">
+        <dc:Bounds x="452" y="272" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_UnderwriterReview_di" bpmnElement="Task_UnderwriterReview">
+        <dc:Bounds x="550" y="140" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Decision_di" bpmnElement="Gateway_Decision" isMarkerVisible="true">
+        <dc:Bounds x="755" y="155" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Approved_di" bpmnElement="EndEvent_Approved">
+        <dc:Bounds x="892" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Rejected_di" bpmnElement="EndEvent_Rejected">
+        <dc:Bounds x="892" y="222" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ApplicantRevise_di" bpmnElement="Task_ApplicantRevise">
+        <dc:Bounds x="660" y="280" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_StartToAutomatedCheck_di" bpmnElement="Flow_StartToAutomatedCheck">
+        <di:waypoint x="198" y="180" />
+        <di:waypoint x="260" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_CheckToEligibilityGateway_di" bpmnElement="Flow_CheckToEligibilityGateway">
+        <di:waypoint x="390" y="180" />
+        <di:waypoint x="445" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_EligibilityPassed_di" bpmnElement="Flow_EligibilityPassed">
+        <di:waypoint x="495" y="180" />
+        <di:waypoint x="550" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_AutoReject_di" bpmnElement="Flow_AutoReject">
+        <di:waypoint x="470" y="205" />
+        <di:waypoint x="470" y="272" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ReviewToDecisionGateway_di" bpmnElement="Flow_ReviewToDecisionGateway">
+        <di:waypoint x="690" y="180" />
+        <di:waypoint x="755" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_DecisionApproved_di" bpmnElement="Flow_DecisionApproved">
+        <di:waypoint x="780" y="155" />
+        <di:waypoint x="780" y="120" />
+        <di:waypoint x="892" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_DecisionRejected_di" bpmnElement="Flow_DecisionRejected">
+        <di:waypoint x="780" y="205" />
+        <di:waypoint x="780" y="240" />
+        <di:waypoint x="892" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_DecisionRequestInfo_di" bpmnElement="Flow_DecisionRequestInfo">
+        <di:waypoint x="780" y="205" />
+        <di:waypoint x="780" y="245" />
+        <di:waypoint x="725" y="245" />
+        <di:waypoint x="725" y="280" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ApplicantResubmitted_di" bpmnElement="Flow_ApplicantResubmitted">
+        <di:waypoint x="660" y="320" />
+        <di:waypoint x="600" y="320" />
+        <di:waypoint x="600" y="220" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

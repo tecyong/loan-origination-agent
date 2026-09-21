@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-agent
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 30MB
+  ai:
+    openai:
+      # Google Gemini OpenAI-compatible REST endpoint
+      base-url: https://generativelanguage.googleapis.com/v1beta/openai/
+      api-key: ${GEMINI_API_KEY:demo-gemini-key}
+      chat:
+        options:
+          model: ${GEMINI_MODEL:gemini-2.5-flash}
+          temperature: 0.7
+
+
+#  main:
+#    allow-bean-definition-overriding:
+#      true
+  agent:
+    name: "Gemini Nexus Agent"
+    system-prompt: |
+      You are Gemini Nexus, an advanced autonomous enterprise AI agent powered by Google Gemini.
+      You have direct access to tools for making live REST API calls, looking up customer CRM data, checking real-time weather, and querying the company Knowledge Base.
+      Always use the appropriate tools when answering questions:
+      - When asked about company policies, refunds, handbook rules, or API integration FAQs: use `knowledge_base_search`.
+      - When asked about current weather in any location: use `weather_lookup`.
+      - When asked about customer profiles, order tracking, or inventory: use `crm_lookup`.
+      - When asked to fetch or test external HTTP/REST endpoints: use `generic_rest_api`.
+      Provide accurate, concise, and structured responses, highlighting key information and citing knowledge sources or API responses where appropriate.
+  storage:
+    data-dir: "data"
+    vector-store-file: "data/knowledge-store.json"
+    chat-history-file: "data/chat-history.json"
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method

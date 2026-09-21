@@ -1,0 +1,53 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: los-backend
+
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/postgres?currentSchema=los
+    username: postgres
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        default_schema: los
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 15MB
+
+# EximeeBPMS Engine Configuration
+eximeebpms:
+  bpm:
+    database:
+      type: postgres
+      schema-name: los
+      table-prefix: los.
+    auto-deployment-enabled: true
+    job-execution:
+      enabled: true
+
+# Security & JWT Configuration
+app:
+  jwt:
+    secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    expiration-ms: 86400000 # 24 hours
+  upload:
+    dir: ./uploads
+
+# OpenAPI Documentation
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
